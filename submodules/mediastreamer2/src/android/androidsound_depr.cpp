@@ -38,6 +38,8 @@
 
 static const float sndwrite_flush_threshold=0.020;	//ms
 static const float sndread_flush_threshold=0.020; //ms
+ int m_ptt=0;
+
 static void sound_read_setup(MSFilter *f);
 
 #ifdef __cplusplus
@@ -54,6 +56,19 @@ JNIEXPORT jboolean JNICALL Java_org_linphone_mediastream_Version_nativeHasNeon(J
 JNIEXPORT jboolean JNICALL Java_org_linphone_mediastream_Version_nativeHasZrtp(JNIEnv *env, jclass c) {
 	return ms_zrtp_available();
 }
+
+
+JNIEXPORT void JNICALL Java_org_linphone_core_LinphoneCallImpl_setPttOpen(JNIEnv *env, jobject c) {
+	m_ptt=1;
+	ms_message("设置PTTopen");
+}
+
+JNIEXPORT void  JNICALL Java_org_linphone_core_LinphoneCallImpl_setPttClose(JNIEnv *env, jobject c) {
+	m_ptt=0;
+	ms_message("设置PTTclose");
+}
+
+
 
 JNIEXPORT jboolean JNICALL Java_org_linphone_mediastream_Version_nativeHasVideo(JNIEnv *env, jclass c) {
 #ifdef VIDEO_ENABLED
@@ -327,6 +342,8 @@ static void* msandroid_read_cb(msandroid_sound_read_data* d) {
 	}
 	//start recording
 	ms_message("Start recording");
+	//reset m_ptt
+	m_ptt=0;
 	jni_env->CallVoidMethod(d->audio_record,record_id);
 
 	// int read (byte[] audioData, int offsetInBytes, int sizeInBytes)
@@ -337,16 +354,19 @@ static void* msandroid_read_cb(msandroid_sound_read_data* d) {
 	}
 
 	while (d->started && (nread=jni_env->CallIntMethod(d->audio_record,read_id,d->read_buff,0, d->read_chunk_size))>0) {
+		d->read_samples+=nread/(2*d->nchannels);
+		if(m_ptt==1){
 		m = allocb(nread,0);
-		ms_message("在这里取得音频");
 		jni_env->GetByteArrayRegion(d->read_buff, 0,nread, (jbyte*)m->b_wptr);
 		//ms_error("%i octets read",nread);
 		m->b_wptr += nread;
-		d->read_samples+=nread/(2*d->nchannels);
+		//d->read_samples+=nread/(2*d->nchannels);
+		//ms_ticker_synchronizer_update(d->ticker_synchronizer, d->read_samples, d->rate);
 		ms_ticker_synchronizer_update(d->ticker_synchronizer, d->read_samples, d->rate);
 		ms_mutex_lock(&d->mutex);
 		ms_bufferizer_put (&d->rb,m);
 		ms_mutex_unlock(&d->mutex);
+		}
 	};
 
 	goto end;
